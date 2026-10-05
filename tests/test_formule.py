@@ -12,3 +12,15 @@ def test_calcola_formula():
     formula = "[[a]]+[[b]]*2"
     variabili = {"a": 10, "b": 3}
     assert calcola_formula(formula, variabili) == 16
+
+def test_calcola_formula_quota_staff_con_importi_decimali():
+    from decimal import Decimal
+
+    # Formula configurata da init_db per la quota dello staff.
+    formula = "([[quota_acconto]]+[[quota_saldo]])/2"
+    variabili = {
+        "quota_acconto": Decimal("20.50"),
+        "quota_saldo": Decimal("40.00"),
+    }
+
+    assert calcola_formula(formula, variabili) == 30.25
