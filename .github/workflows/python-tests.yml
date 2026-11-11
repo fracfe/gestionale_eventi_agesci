@@ -75,7 +75,7 @@ jobs:
         run: |
           docker tag "${{ steps.image.outputs.name }}:${{ github.sha }}" "gestionale-bilanci-development:$VCS_REF"
           docker compose --env-file /dev/null -f compose.development.yml up -d db
-          docker compose --env-file /dev/null -f compose.development.yml run --rm --no-build \
+          docker compose --env-file /dev/null -f compose.development.yml run --rm \
             -e INITIAL_ADMIN_PASSWORD="$SMOKE_PASSWORD" --entrypoint sh web -ec 'flask db upgrade && flask init-db'
           docker compose --env-file /dev/null -f compose.development.yml up -d --no-build --wait
           python ops/smoke-development.py
