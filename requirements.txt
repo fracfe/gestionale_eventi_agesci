@@ -10,3 +10,4 @@ pandas
 SQLAlchemy
 requests
 PyMySQL
+Flask-WTF

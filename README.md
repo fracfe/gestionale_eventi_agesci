@@ -1,80 +1,40 @@
-# Gestionale per Eventi AGESCI
+# Gestionale eventi AGESCI Piemonte
 
-Gestionale utilizzato per gestire la contabilità degli eventi.
+Gestione di eventi, quote e rendiconti. Fork di sviluppo di `calminaro/gestionale_eventi_agesci`.
 
-### Schema DB
+## Ambienti
 
-<img title="Schema DB" src="./static/schema_db.png" alt="" data-align="center">
+| Ambiente | Uso | Accesso |
+|---|---|---|
+| Sviluppo | Modifiche e dati di prova | Porta privata 5001 sulla VM108 |
+| Beta | Collaudo della versione scelta | Porta 5000 e Funnel esistente |
+| main | Codice consolidato | GitHub, con eventuale tag di versione |
 
-### Deploy
-Docker compose: 
-```yaml
-services:
-  web:
-    image: myapp:1.0
-    restart: unless-stopped
-    environment:
-      DB_TYPE: mariadb
-      DB_USER: app_user
-      DB_PASSWORD: app_password
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_NAME: app_db
-      SECRET_KEY: secret_key
-    depends_on:
-      db:
-        condition: service_healthy
+Le due installazioni usano database, volumi, rete e cookie separati. Non si promuovono i dati di prova nella beta. La pubblicazione su GitHub non aggiorna automaticamente il sito.
 
-  db:
-    image: mariadb:11.4
-    container_name: mariadb
-    restart: unless-stopped
-    environment:
-      MARIADB_ROOT_PASSWORD: rootpassword
-      MARIADB_DATABASE: app_db
-      MARIADB_USER: app_user
-      MARIADB_PASSWORD: app_password
-      TZ: Europe/Rome
-    volumes:
-      - mariadb_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mariadb-admin", "ping", "-h", "localhost", "-uroot", "-prootpassword"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+**[Preparare lo sviluppo, aggiornare e recuperare](docs/AMBIENTI.md)** · **[Permessi e importi](docs/PERMESSI-E-IMPORTI.md)** · **[Backlog](BACKLOG.md)**
 
-  nginx:
-    image: nginx:alpine
-    restart: unless-stopped
-    ports:
-      - "5000:80"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - web
+## Test
 
-volumes:
-  mariadb_data:
+Python 3.12, MariaDB11.4 per le prove di integrazione; SQLite per test rapidi:
+
+```bash
+python -m venv .venv
+.venv/bin/pip install -c constraints.txt -r requirements.txt -r requirements-dev.txt
+.venv/bin/python -m pytest
+node --test tests/csrf.test.cjs
 ```
-nginx.conf
-```
-events {}
 
-http {
-    upstream backend {
-        server web:8000;
-    }
+Per eseguire la suite anche su un database MariaDB **dedicato e vuoto**, impostare `TEST_DATABASE_URL` con una URI `mysql+pymysql://.../gestionale_test`. La suite crea e cancella le proprie tabelle; rifiuta database non terminanti con `_test`. Non usare mai le credenziali o il database della beta. Le prove di migrazione coprono lo schema precedente con dati già presenti.
 
-    server {
-        listen 80;
+La CI esegue SQLite e MariaDB, verifica il codice JavaScript e costruisce l'immagine dopo i test. Pubblica nel registro del fork soltanto sui push in dev/main. GitHub Actions è attivo sul fork. Le dipendenze sono bloccate in `constraints.txt`.
 
-        location / {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-}
-```
+## Avvio
+
+La configurazione per il nuovo ambiente è `compose.development.yml`; seguire le istruzioni dedicate, incluso il plugin Docker Compose v2. Il comando `flask init-db` richiede una password amministrativa di almeno12caratteri e rifiuta un database con utenti già presenti. Non esistono credenziali predefinite.
+
+La migrazione degli importi richiede backup e collaudo prima dell'applicazione alla beta. La configurazione e i segreti dell'installazione esistente restano fuori dal repository. La funzionalità Shell del controller per gli ambienti persistenti è distinta e ancora da implementare.
+
+## Schema iniziale
+
+Lo schema storico è illustrato in [static/schema_db.png](static/schema_db.png); per i tipi correnti fanno fede `models.py` e le migrazioni.

@@ -7,3 +7,9 @@ venv
 .coverage
 .env
 .vscode
+.venv/
+.env.*
+*.sql
+*.sql.gz
+.pytest_cache/
+htmlcov/
