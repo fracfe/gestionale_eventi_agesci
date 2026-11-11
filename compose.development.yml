@@ -1,0 +1,47 @@
+# Solo sviluppo: nessun riferimento ai container, volumi o segreti della beta.
+name: bilanci-development
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?Configurare DB_ROOT_PASSWORD}
+      MARIADB_DATABASE: gestionale_development
+      MARIADB_USER: gestionale_development
+      MARIADB_PASSWORD: ${DB_PASSWORD:?Configurare DB_PASSWORD}
+    volumes:
+      - development-db:/var/lib/mysql
+    healthcheck:
+      test: [CMD, healthcheck.sh, --connect, --innodb_initialized]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [development]
+  web:
+    build:
+      context: .
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
+    image: gestionale-bilanci-development:${VCS_REF:-local}
+    restart: unless-stopped
+    environment:
+      DB_TYPE: mariadb
+      DB_NAME: gestionale_development
+      DB_USER: gestionale_development
+      DB_PASSWORD: ${DB_PASSWORD:?Configurare DB_PASSWORD}
+      DB_HOST: db
+      DB_PORT: 3306
+      SECRET_KEY: ${SECRET_KEY:?Configurare SECRET_KEY}
+      APP_ENV: development
+      SESSION_COOKIE_NAME: bilanci_development
+      COOKIE_SECURE: "0"
+    ports:
+      - '127.0.0.1:5001:8000'
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [development]
+volumes:
+  development-db:
+networks:
+  development:

@@ -1,0 +1,9 @@
+.git
+.venv
+venv
+.env*
+*.sql
+*.sql.gz
+__pycache__
+.pytest_cache
+.coverage

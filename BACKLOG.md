@@ -1,54 +1,62 @@
-# Prima delle nuove funzionalità
+# Backlog del gestionale eventi
 
-## Stato verificato
+Aggiornato l’11 novembre2026. Unico elenco delle attività applicative; lo sviluppo del controller ha un proprio backlog separato.
 
-- Repository: `fracfe/gestionale_eventi_agesci`; sviluppo su `dev`.
-- VM 108: ambiente del gestionale. VM 200: controller stable. VM 302: vecchio worker, escluso da questo lavoro.
-- La beta sulla VM 108 usa il codice dev iniziale e7938158. Questa PR non aggiorna la VM.
-- Cinque contributi di test riuniti nella PR #1: quattro casi delle formule e un caso di rifiuto di importo non numerico. Suite consolidata: 10 test superati in 0,11 s, eseguiti dall'utente sulla VM 108 in container temporaneo isolato con SQLite sul commit 799743d2080ee9aaa9cc3768940e478cb15bf9c5. Anche il controllo della sintassi è superato. Questa verifica non copre MariaDB, autenticazione o autorizzazioni.
-- Il fork non espone Issues: il tentativo di apertura restituisce HTTP 410. Al controllo della PR non risultano esecuzioni Actions; verificare lo stato di abilitazione dalla pagina Actions.
+## Stato degli ambienti
 
-## Preparazione necessaria
+- Repository corretto: `fracfe/gestionale_eventi_agesci`. Rami di lavoro → dev → beta scelta esplicitamente → main/tag dopo il collaudo.
+- VM108: gestionale e beta; VM200: controller stable; VM302: vecchio worker, escluso da questi interventi.
+- La beta continua a usare il codice e7938158. Non è stata aggiornata e i suoi dati/configurazione/Funnel non sono stati modificati.
+- PR1 integrata in dev al commit dd1cb1d: cinque contributi di test consolidati, 10testPASS sulla VM108 in container temporaneo/SQLite. Le PR1–4 nel repository originale restano separate.
 
-### 1. Verificare i test e correggere la CI
+## Preparazione dello sviluppo
 
-La suite consolidata è stata eseguita con successo prima del merge. I workflow Docker di dev/main puntano ancora a `ghcr.io/calminaro/gestionale_eventi_agesci`, hanno un job build senza `needs: test` e tentano di pubblicare anche sulle pull request. Correggere il namespace del fork, pubblicare solo su push autorizzati dopo i test e verificare che Actions funzioni. I test sono duplicati tra workflow: riordinare senza perdere la verifica delle PR.
+### F01 — CI e immagini del fork
 
-### 2. Rendere riproducibili aggiornamento e recupero
+Implementata una sola pipeline per PR/push in dev/main: suite SQLite+MariaDB11.4, test JavaScript, verifica Compose, build dopo i test. Push immagini solo per eventi push nel registro ricavato dal nome del fork. Rimossi i workflow duplicati diretti al registro di Calminaro. Python3.12 e dipendenze bloccate.
 
-La VM usa `/opt/gestionale-bilanci`, configurazione riservata in `/etc/gestionale-bilanci`, container `bilanci-web` e `bilanci-db`, rete `bilanci`, volume `bilanci-db-data`. Il sito è associato a `127.0.0.1:5000` e pubblicato via Tailscale Funnel.
+**Da verificare sul servizio:** abilitazione GitHub Actions e run effettivo sul fork, inclusi build Docker e pubblicazione GHCR. Al controllo precedente non risultavano run. Issues è disabilitato (HTTP410): riabilitarlo se si vuole migrare questo elenco nel tracker, senza mantenere due liste concorrenti.
 
-Preparare configurazione di deploy, versioni delle dipendenze/Python dichiarate, commit e immagine identificabili, procedura di aggiornamento e ritorno alla versione precedente. Prima di modifiche allo schema o dati reali, verificare backup MariaDB e ripristino in database separato. Non assumere la copertura dei backup della VM. Non rieseguire `init-db` su database inizializzato. Nessuna credenziale nel repository.
+### F02 — Ambiente di sviluppo indipendente
 
-## Correzioni applicative prioritarie
+Preparati `compose.development.yml` e generatore dei segreti senza sovrascrittura. Porta127.0.0.1:5001, database/volume/rete dedicati, cookie `bilanci_development`, indicazione visibile “Sviluppo · dati di prova”. Accesso da browser con tunnel SSH; il Funnel della beta resta invariato. `/health` controlla l’accessibilità delle tabelle applicative.
 
-### 3. Autorizzazioni
+**Da attivare sulla VM108:** installare/verificare Composev2, creare checkout separato, inizializzare nuovo database e provare l’interfaccia. I2GB di RAM richiedono misura dei consumi e, se necessario, sviluppo fermo quando non serve. Nessuna installazione della nuova configurazione dichiarata eseguita.
 
-In `routes.py` diverse operazioni su eventi, transazioni e impostazioni hanno solo `login_required`, senza controlli espliciti di ruolo o appartenenza. Il controllo dashboard `if "DASHBOARD" and "EVENTS" in permessi` verifica solo EVENTS. I test attuali usano `LOGIN_DISABLED=True`.
+### F03 — Backup, ripristino e promozione
 
-Definire e applicare permessi lato server, testare con utenti e gruppi diversi e autenticazione abilitata, verificare protezione CSRF. Priorità prima di usare dati reali con più utenti.
+Preparati `ops/backup-beta.sh`, `ops/restore-drill.sh` e procedura in `docs/AMBIENTI.md`: dump deterministico/checksum/immagini, recupero in database temporaneo senza rete e confronto dopo importazione. La promozione mantiene i dati della beta; backup prima di migrazioni e ritorno alla coppia immagine+schema compatibile. Nessuna scansione NAS o rotazione automatica.
 
-### 4. Precisione degli importi
+**Da collaudare sulla VM108:** backup effettivo, prova del ripristino con Docker e conservazione separata di segreti/immagine. I backup della VM non sono stati verificati. Non rieseguire init-db. Nessuna operazione sui backup o sul database della beta svolta dalla chat.
 
-`models.py` usa Integer per importo delle transazioni e quote dell'evento, mentre le route accettano float. Definire Decimal/Numeric oppure centesimi interi e una migrazione verificata. Testare conservazione dei centesimi e totali su MariaDB: SQLite non garantisce lo stesso comportamento. Esempi: 12,50 e 0,01.
+## Correzioni applicative
 
-## Funzioni incomplete riscontrate
+### F04 — Importi esatti
 
-### 5. Profilo e gestione
+Implementati Numeric(14,2) per importi/quote, conversioni Decimal e formule decimali. Input con più di2decimali, non finito o fuori intervallo rifiutato. Migrazione da schema precedente conserva dati e valori in euro; downgrade distruttivo a Integer rifiutato. Regole e limiti in `docs/PERMESSI-E-IMPORTI.md`.
 
-- `templates/account.html`: contenuto main vuoto; richiama `static/account.js`, assente.
-- Cambio password dall'interfaccia da implementare con verifica della password corrente e conferma della nuova.
-- `/user`: POST e DELETE restituiscono successo senza eseguire operazioni.
-- `/tipi_eventi`: DELETE non cancella; POST crea solo se tipo_id è vuoto, senza aggiornare i tipi esistenti.
+**Prima della beta:** collaudo di migrazione su copia recuperabile del suo database. I centesimi eventualmente persi nello schema precedente non sono ricostruibili. Definire la regola per risultati calcolati con frazioni di centesimo prima dei rendiconti definitivi.
 
-Completare solo i flussi richiesti, con permessi lato server e test. Non restituire successo per operazioni non effettuate.
+### F05 — Autorizzazioni e richieste mutanti
 
-## Ordine proposto
+Implementati controlli lato server per EVENTS, MY_EVENTS/ALL_EVENTS e proprietà evento, assegnazioni del responsabile e SETTINGS. Dashboard richiede entrambi i permessi previsti. Test con utenti diversi e login attivo. Protezione CSRF su login e mutazioni, token automatico nelle fetch della UI, logoutPOST. Nessun gruppo o utente della beta modificato.
 
-1. Verifica e integrazione dei test consolidati.
-2. CI del fork e procedura di aggiornamento/recupero.
-3. Permessi e precisione monetaria.
-4. Profilo/cambio password, utenti e tipi evento.
-5. Ulteriori funzionalità definite con l'utente.
+**Da collaudare nello sviluppo:** flussi web con gruppi reali e conferma della matrice organizzativa. La protezione della beta attuale non cambia finché non viene aggiornata esplicitamente.
 
-Le PR #1–#4 nel repository originale di Calminaro restano separate e non sono state chiuse o modificate.
+## Funzionalità successive
+
+### U01 — Profilo e password
+
+Pagina Profilo ancora vuota; eliminare il riferimento al file account.js assente o realizzarlo con la funzione. Implementare cambio password con password attuale e conferma della nuova, poi verificare gestione sessioni.
+
+### U02 — Utenti e tipi evento
+
+Completare creazione/modifica/cancellazione utenti e modifica/cancellazione tipi evento con permessi e gestione dei riferimenti in uso. Le operazioni non implementate ora restituiscono501 invece di un falso successo.
+
+### U03 — Validazioni e flussi contabili
+
+Ampliare validazioni di campi obbligatori/date/stati, gestione degli errori della UI e criteri di transizione PENDING/ACTIVE/SUBMIT/DONE. Definire requisiti di grafici/esportazioni, senza ricavare nuove funzionalità dai soli placeholder.
+
+## Confini della consegna
+
+Modifiche al codice in dev, senza promozione in main o aggiornamento beta. La Shell per registrare e amministrare ambienti persistenti esistenti è D14 del backlog controller: non è implementata da questa consegna e non è un prerequisito per scrivere/testare il codice del gestionale.

@@ -1,11 +1,13 @@
 from models import db, User, GruppiUser, SysOption, TipoEvento, TipoTransazione, TipoVariabile, Evento, Transazione
-from flask import render_template, redirect, jsonify, request, url_for, flash, send_from_directory, send_file
+from flask import abort, render_template, redirect, jsonify, request, url_for, flash, send_from_directory, send_file
 from flask_login import login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm.attributes import flag_modified
 from datetime import datetime
 from decimal import Decimal
+from money import parse_money
+from permissions import require_permission, event_for_user, can_assign, permissions
 import ast, operator as op
 import requests
 import secrets
@@ -30,7 +32,9 @@ def eval_expr(expr):
 
     def _eval(node):
         if isinstance(node, ast.Constant):
-            return node.value
+            if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
+                raise ValueError("Sono ammessi soltanto numeri")
+            return Decimal(ast.get_source_segment(expr, node))
         elif isinstance(node, ast.BinOp):
             return allowed_operators[type(node.op)](_eval(node.left), _eval(node.right))
         elif isinstance(node, ast.UnaryOp):
@@ -54,14 +58,14 @@ def init_routes(app):
     @app.route("/dashboard")
     @login_required
     def dashboard():
-        if "DASHBOARD" and "EVENTS" in GruppiUser.query.filter_by(id=current_user.gruppo).first().permessi:
+        if {"DASHBOARD", "EVENTS"} <= permissions():
             return render_template("dashboard.html")
-        return redirect(url_for("index"))
+        abort(403)
 
     @app.route("/evento/<evento_id>")
     @login_required
     def evento(evento_id):
-        tmp_evento = Evento.query.filter_by(id=int(evento_id)).first()
+        tmp_evento = event_for_user(evento_id)
         evento = {
             "id": tmp_evento.id,
             "nome": tmp_evento.nome,
@@ -78,6 +82,7 @@ def init_routes(app):
     @app.route("/impostazioni")
     @login_required
     def impostazioni():
+        require_permission("SETTINGS")
         return render_template("impostazioni.html")
 
     @app.route("/sidebardata")
@@ -89,16 +94,18 @@ def init_routes(app):
     @app.route("/eventi_list", methods=["GET", "POST"])
     @login_required
     def eventi_list():
+        require_permission("EVENTS")
         if request.method == "POST":
+            can_assign(request.json.get("account_responsabile"))
             evento = Evento(nome=request.json["nome"], tipo=request.json["tipo_evento"], responsabile=request.json["account_responsabile"], stato="PENDING", data_inizio=datetime.today().date(), localita="ignota", iscritti=0, partecipanti=0, quota_acconto=0, quota_saldo=0, staff=1, iban="")
             db.session.add(evento)
             db.session.commit()
             return jsonify({"status": "success", "response": "ok"})
         elenco_eventi = []
         tmp_eventi = []
-        if "MY_EVENTS" in GruppiUser.query.filter_by(id=current_user.gruppo).first().permessi:
+        if "MY_EVENTS" in permissions():
             tmp_eventi = Evento.query.filter_by(responsabile=current_user.id)
-        if "ALL_EVENTS" in GruppiUser.query.filter_by(id=current_user.gruppo).first().permessi:
+        if "ALL_EVENTS" in permissions():
             tmp_eventi = Evento.query.all()
         for i in tmp_eventi:
             tmp_responsabile = User.query.filter_by(id=i.responsabile).first()
@@ -116,10 +123,11 @@ def init_routes(app):
     @app.route("/evento_data/<evento_id>", methods=["GET", "POST", "DELETE"])
     @login_required
     def evento_edit(evento_id):
+        checked_event = event_for_user(evento_id)
         richiesta = request.args.get("tipo")
         if request.method == "DELETE":
             if richiesta == "elimina":
-                evento = Evento.query.filter_by(id=int(evento_id)).first()
+                evento = checked_event
                 if evento.stato == "PENDING":
                     db.session.delete(evento)
                     db.session.commit()
@@ -128,22 +136,23 @@ def init_routes(app):
                     return jsonify({"status": "error", "response": "evento già attivo!"})
         if request.method == "POST":
             if richiesta == "attiva":
-                evento = Evento.query.filter_by(id=int(evento_id)).first()
+                evento = checked_event
                 evento.stato = "ACTIVE"
                 db.session.commit()
                 return jsonify({"status": "success", "response": "ok"})
             if richiesta == "sottometti":
-                evento = Evento.query.filter_by(id=int(evento_id)).first()
+                evento = checked_event
                 evento.stato = "SUBMIT"
                 db.session.commit()
                 return jsonify({"status": "success", "response": "ok"})
             if richiesta == "update":
                 try:
-                    tmp_quota_acconto = float(str(request.json["quota_acconto"]).replace(",", "."))
-                    tmp_quota_saldo = float(str(request.json["quota_saldo"]).replace(",", "."))
+                    tmp_quota_acconto = parse_money(request.json["quota_acconto"])
+                    tmp_quota_saldo = parse_money(request.json["quota_saldo"])
                 except:
                     return jsonify({"status": "error", "response": 'importo non valido'})
-                evento = Evento.query.filter_by(id=int(evento_id)).first()
+                evento = checked_event
+                can_assign(request.json.get("responsabile"))
                 evento.nome = request.json["nome_evento"]
                 evento.tipo = request.json["tipo_evento"]
                 evento.responsabile = request.json["responsabile"]
@@ -161,11 +170,8 @@ def init_routes(app):
                 evento.iban = request.json["iban"]
                 db.session.commit()
                 return jsonify({"status": "success", "response": "ok"})
-            evento = Evento(nome=request.json["nome"], tipo=request.json["tipo_evento"], responsabile=request.json["account_responsabile"], stato="PENDING", data_inizio=datetime.today().date(), localita="ignota", iscritti=0, partecipanti=0, quota_acconto=0, staff=1)
-            db.session.add(evento)
-            db.session.commit()
-            return jsonify({"status": "success", "response": "ok"})
-        tmp_evento = Evento.query.filter_by(id=int(evento_id)).first()
+            return jsonify(status="error", response="azione non valida"), 400
+        tmp_evento = checked_event
         try:
             tmp_data_fine = tmp_evento.data_fine.strftime("%Y-%m-%d")
         except:
@@ -251,10 +257,14 @@ def init_routes(app):
     @app.route("/transazioni/<evento_id>", methods=["POST"])
     @login_required
     def transazioni(evento_id):
+        event_for_user(evento_id)
         try:
-            tmp_importo = float(request.json["importo"].replace(",", "."))
-        except:
-            return jsonify({"status": "error", "response": f'importo {request.json["importo"]} non valido'})
+            tmp_importo = parse_money(request.json.get("importo"))
+        except ValueError:
+            return jsonify({"status": "error", "response": f'importo {request.json.get("importo")} non valido'})
+        transaction_type = db.session.get(TipoTransazione, request.json.get("tipo_transazione"))
+        if transaction_type is None or transaction_type.calcolata:
+            return jsonify(status="error", response="tipo transazione non valido"), 400
         transazione = Transazione(tipo_transazione=request.json["tipo_transazione"], evento=int(evento_id), descrizione=request.json["descrizione"], data=datetime.strptime(request.json["data"], "%Y-%m-%d"), importo=tmp_importo)
         db.session.add(transazione)
         db.session.commit()
@@ -263,6 +273,7 @@ def init_routes(app):
     @app.route("/system_option", methods=["GET", "POST"])
     @login_required
     def system_option():
+        require_permission("SETTINGS")
         if request.method == "POST":
             SysOption.query.filter_by(key="id_ente")[0].value = request.json["id_ente"]
             SysOption.query.filter_by(key="nome_iro")[0].value = request.json["nome_iro"]
@@ -284,11 +295,11 @@ def init_routes(app):
     @app.route("/user", methods=["GET", "POST", "DELETE"])
     @login_required
     def user():
-        if request.method == "DELETE":
-            return jsonify({"status": "success", "response": "ok"})
-        if request.method == "POST":
-            return jsonify({"status": "success", "response": "ok"})
-        tmp_user = User.query.all()
+        if request.method != "GET":
+            require_permission("SETTINGS")
+            return jsonify(status="error", response="not_implemented"), 501
+        require_permission("EVENTS")
+        tmp_user = User.query.all() if "ALL_EVENTS" in permissions() else [current_user]
         elenco_user = []
         for i in tmp_user:
             utente = {
@@ -305,12 +316,13 @@ def init_routes(app):
     @app.route("/tipi_transazioni/<tipo>")
     @login_required
     def tipi_transazioni(tipo):
+        require_permission("EVENTS")
         if tipo == "entrata":
             tmp_transazione = TipoTransazione.query.filter_by(tipo="E")
         elif tipo == "uscita":
             tmp_transazione = TipoTransazione.query.filter_by(tipo="U")
         elif tipo == "manuali":
-            tmp_transazione = TipoTransazione.query.filter_by(calcolata="false")
+            tmp_transazione = [item for item in TipoTransazione.query.all() if not item.calcolata]
         elif tipo == "all":
             tmp_transazione = TipoTransazione.query.all()
         else:
@@ -330,9 +342,12 @@ def init_routes(app):
     @app.route("/tipi_eventi/<int:id_tipo>", methods=["GET", "POST", "DELETE"])
     @login_required
     def tipi_eventi(id_tipo):
+        require_permission("SETTINGS" if request.method != "GET" else "EVENTS")
         if request.method == "DELETE":
-            return jsonify({"status": "success", "response": "ok"})
+            return jsonify(status="error", response="not_implemented"), 501
         if request.method == "POST":
+            if request.json["tipo_id"] != "":
+                return jsonify(status="error", response="not_implemented"), 501
             if request.json["tipo_id"] == "":
                 db.session.add(TipoEvento(nome=request.json["nome"]))
                 db.session.commit()
@@ -370,7 +385,7 @@ def init_routes(app):
                 return jsonify({"status": "success", "response": "invalid"})
         return jsonify({"status": "success", "response": "error"})
 
-    @app.route("/logout")
+    @app.route("/logout", methods=["POST"])
     @login_required
     def logout():
         logout_user()

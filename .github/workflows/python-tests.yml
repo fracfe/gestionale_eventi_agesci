@@ -1,38 +1,72 @@
-name: Python Test BE
-
+name: Test e immagini
 on:
   push:
-    branches: [ "dev" ]
+    branches: [dev, main]
   pull_request:
-    branches: [ "dev" ]
-
+    branches: [dev, main]
+  workflow_dispatch:
 permissions:
   contents: read
-
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        database: [sqlite, mariadb]
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: test-root-only
+          MARIADB_DATABASE: gestionale_test
+          MARIADB_USER: test
+          MARIADB_PASSWORD: test-only
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s --health-timeout=3s --health-retries=30
     env:
-      SECRET_KEY: "secret"
-      DB_TYPE: "sqlite"
-      DB_USER: ""
-      DB_PASSWORD: ""
-      DB_HOST: ""
-      DB_PORT: ""
-      DB_NAME: ""
+      DB_TYPE: sqlite
+      DB_NAME: ':memory:'
+      SECRET_KEY: ci-only
+      TEST_DATABASE_URL: ${{ matrix.database == 'mariadb' && 'mysql+pymysql://test:test-only@127.0.0.1:3306/gestionale_test' || 'sqlite:///:memory:' }}
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.11"
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -r requirements-dev.txt
-
-    - name: Run tests
-      run: pytest --cov=app
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -c constraints.txt -r requirements.txt -r requirements-dev.txt
+      - run: python -m pytest --cov=app --cov=routes --cov=permissions --cov=money
+      - run: for script in ops/*.sh; do bash -n "$script"; done
+      - run: node --test tests/csrf.test.cjs
+      - run: docker compose --env-file /dev/null -f compose.development.yml config --quiet
+        env:
+          DB_ROOT_PASSWORD: ci-root
+          DB_PASSWORD: ci-password
+          SECRET_KEY: ci-secret
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Nome immagine del repository corrente
+        id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' }}
+          build-args: VCS_REF=${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:${{ github.ref_name == 'main' && 'main' || 'dev' }}

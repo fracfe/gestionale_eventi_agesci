@@ -55,8 +55,8 @@ class Evento(db.Model):
     localita = db.Column(db.String(128), nullable=False)
     iscritti = db.Column(db.Integer, nullable=False)
     partecipanti = db.Column(db.Integer, nullable=False)
-    quota_acconto = db.Column(db.Integer, nullable=False)
-    quota_saldo = db.Column(db.Integer, nullable=False)
+    quota_acconto = db.Column(db.Numeric(14, 2), nullable=False)
+    quota_saldo = db.Column(db.Numeric(14, 2), nullable=False)
     staff = db.Column(db.Integer, nullable=False)
     iban = db.Column(db.String(128), nullable=False)
 
@@ -67,4 +67,4 @@ class Transazione(db.Model):
     evento = db.Column(db.Integer, db.ForeignKey("eventi.id"), nullable=False)
     descrizione = db.Column(db.String(128), nullable=False)
     data = db.Column(db.Date, nullable=False)
-    importo = db.Column(db.Integer, nullable=False)
+    importo = db.Column(db.Numeric(14, 2), nullable=False)
