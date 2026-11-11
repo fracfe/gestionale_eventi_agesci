@@ -5,14 +5,14 @@
 - Repository: `fracfe/gestionale_eventi_agesci`; sviluppo su `dev`.
 - VM 108: ambiente del gestionale. VM 200: controller stable. VM 302: vecchio worker, escluso da questo lavoro.
 - La beta sulla VM 108 usa il codice dev iniziale e7938158. Questa PR non aggiorna la VM.
-- Cinque contributi di test riuniti nella PR #1: quattro casi delle formule e un caso di rifiuto di importo non numerico. Suite attesa: 10 test. Esecuzione completa ancora da verificare; il solo controllo della sintassi è superato.
+- Cinque contributi di test riuniti nella PR #1: quattro casi delle formule e un caso di rifiuto di importo non numerico. Suite consolidata: 10 test superati in 0,11 s, eseguiti dall'utente sulla VM 108 in container temporaneo isolato con SQLite sul commit 799743d2080ee9aaa9cc3768940e478cb15bf9c5. Anche il controllo della sintassi è superato. Questa verifica non copre MariaDB, autenticazione o autorizzazioni.
 - Il fork non espone Issues: il tentativo di apertura restituisce HTTP 410. Al controllo della PR non risultano esecuzioni Actions; verificare lo stato di abilitazione dalla pagina Actions.
 
 ## Preparazione necessaria
 
 ### 1. Verificare i test e correggere la CI
 
-Eseguire la suite consolidata prima del merge. I workflow Docker di dev/main puntano ancora a `ghcr.io/calminaro/gestionale_eventi_agesci`, hanno un job build senza `needs: test` e tentano di pubblicare anche sulle pull request. Correggere il namespace del fork, pubblicare solo su push autorizzati dopo i test e verificare che Actions funzioni. I test sono duplicati tra workflow: riordinare senza perdere la verifica delle PR.
+La suite consolidata è stata eseguita con successo prima del merge. I workflow Docker di dev/main puntano ancora a `ghcr.io/calminaro/gestionale_eventi_agesci`, hanno un job build senza `needs: test` e tentano di pubblicare anche sulle pull request. Correggere il namespace del fork, pubblicare solo su push autorizzati dopo i test e verificare che Actions funzioni. I test sono duplicati tra workflow: riordinare senza perdere la verifica delle PR.
 
 ### 2. Rendere riproducibili aggiornamento e recupero
 
