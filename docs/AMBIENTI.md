@@ -64,7 +64,7 @@ bash ops/restore-drill.sh /var/backups/gestionale-bilanci/bilanci-DATA-SUFFISSO
 
 Il backup conserva un dump SQL, checksum, nome database e identificatori delle immagini. I segreti `/etc/gestionale-bilanci` e l'immagine effettivamente usata vanno conservati separatamente in modo riservato: il solo dump non ricostruisce l'installazione. Verificare inoltre la copertura dei backup VM del proprio homelab senza darla per scontata.
 
-La prova avvia MariaDB in un nuovo volume, senza rete e senza porte pubblicate. Importa il dump e lo esporta nuovamente: `RESTORE_VERIFIED` richiede lo stesso checksum del dump deterministico. Solo dopo successo elimina i propri container/volume temporanei; su fallimento li conserva. Richiede RAM e spazio per un secondo database: eseguirla a sviluppo fermo sulla VM da2GB. Non ripristina mai nella beta.
+La pipeline verifica anche questa sequenza su container effimeri del runner. La prova sulla VM108 resta separata. La prova avvia MariaDB in un nuovo volume, senza rete e senza porte pubblicate. Importa il dump e lo esporta nuovamente: `RESTORE_VERIFIED` richiede lo stesso checksum del dump deterministico. Solo dopo successo elimina i propri container/volume temporanei; su fallimento li conserva. Richiede RAM e spazio per un secondo database: eseguirla a sviluppo fermo sulla VM da2GB. Non ripristina mai nella beta.
 
 ## Prima di aggiornare la beta
 

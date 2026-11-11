@@ -15,7 +15,7 @@ Aggiornato l’11 novembre2026. Unico elenco delle attività applicative; lo svi
 
 Implementata una sola pipeline per PR/push in dev/main: suite SQLite+MariaDB11.4, test JavaScript, verifica Compose, build dopo i test. Push immagini solo per eventi push nel registro ricavato dal nome del fork. Rimossi i workflow duplicati diretti al registro di Calminaro. Python3.12 e dipendenze bloccate.
 
-**Da verificare sul servizio:** abilitazione GitHub Actions e run effettivo sul fork, inclusi build Docker e pubblicazione GHCR. Al controllo precedente non risultavano run. Issues è disabilitato (HTTP410): riabilitarlo se si vuole migrare questo elenco nel tracker, senza mantenere due liste concorrenti.
+**Da verificare sul servizio:** abilitazione GitHub Actions e run effettivo sul fork, inclusi build Docker e pubblicazione GHCR. Actions è ora attivo: nella PR2 sono già passati i job SQLite/MariaDB, i test JavaScript e la verifica Compose. La pipeline aggiunge anche avvio reale dei container, collaudo HTTP e prova degli script di backup/ripristino prima della pubblicazione; controllarne l’esito finale nella PR. Issues è disabilitato (HTTP410): riabilitarlo se si vuole migrare questo elenco nel tracker, senza mantenere due liste concorrenti.
 
 ### F02 — Ambiente di sviluppo indipendente
 

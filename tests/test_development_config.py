@@ -41,6 +41,8 @@ def test_ci_test_pr_e_pubblicazione_condizionata():
     config = yaml.load((ROOT / '.github/workflows/python-tests.yml').read_text(), Loader=yaml.BaseLoader)
     assert 'pull_request' in config['on']
     assert config['jobs']['image']['needs'] == 'test'
-    build = config['jobs']['image']['steps'][-1]
-    assert build['with']['push'] == "${{ github.event_name == 'push' }}"
+    publish = config['jobs']['image']['steps'][-1]
+    assert publish['if'] == "github.event_name == 'push'"
+    build = next(step for step in config['jobs']['image']['steps'] if step.get('uses', '').startswith('docker/build-push-action'))
+    assert build['with']['push'] == 'false'
     assert 'calminaro' not in str(config)

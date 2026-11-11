@@ -56,17 +56,45 @@ jobs:
       - name: Nome immagine del repository corrente
         id: image
         run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          build-args: VCS_REF=${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:${{ github.ref_name == 'main' && 'main' || 'dev' }}
+      - name: Avvio development e collaudo HTTP su dati di prova
+        env:
+          VCS_REF: ${{ github.sha }}
+          DB_ROOT_PASSWORD: smoke-root-only
+          DB_PASSWORD: smoke-db-only
+          SECRET_KEY: smoke-secret-only
+          SMOKE_PASSWORD: smoke-admin-password
+        run: |
+          docker tag "${{ steps.image.outputs.name }}:${{ github.sha }}" "gestionale-bilanci-development:$VCS_REF"
+          docker compose --env-file /dev/null -f compose.development.yml up -d db
+          docker compose --env-file /dev/null -f compose.development.yml run --rm --no-build \
+            -e INITIAL_ADMIN_PASSWORD="$SMOKE_PASSWORD" --entrypoint sh web -ec 'flask db upgrade && flask init-db'
+          docker compose --env-file /dev/null -f compose.development.yml up -d --no-build --wait
+          python ops/smoke-development.py
+          mkdir -p /tmp/bilanci-ci-backups
+          # Eseguire gli script veri contro i container della prova, mai contro VM108.
+          # I nomi della beta legacy vengono creati SOLO nel runner effimero.
+          docker rename "$(docker compose --env-file /dev/null -f compose.development.yml ps -q db)" bilanci-db
+          docker rename "$(docker compose --env-file /dev/null -f compose.development.yml ps -q web)" bilanci-web
+          bash ops/backup-beta.sh /tmp/bilanci-ci-backups
+          backup_dir=$(find /tmp/bilanci-ci-backups -mindepth 1 -maxdepth 1 -type d | head -n 1)
+          bash ops/restore-drill.sh "$backup_dir"
       - uses: docker/login-action@v3
         if: github.event_name == 'push'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: ${{ github.event_name == 'push' }}
-          build-args: VCS_REF=${{ github.sha }}
-          tags: |
-            ${{ steps.image.outputs.name }}:${{ github.sha }}
-            ${{ steps.image.outputs.name }}:${{ github.ref_name == 'main' && 'main' || 'dev' }}
+      - name: Pubblica soltanto dopo tutti i collaudi
+        if: github.event_name == 'push'
+        run: |
+          docker push "${{ steps.image.outputs.name }}:${{ github.sha }}"
+          docker push "${{ steps.image.outputs.name }}:${{ github.ref_name }}"
